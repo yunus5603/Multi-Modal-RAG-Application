@@ -1,20 +1,25 @@
-from langchain_openai import ChatOpenAI
 from langchain_groq import ChatGroq
+import logging
+
+logger = logging.getLogger(__name__)
 
 class LLMManager:
     def __init__(self, config):
-        if config.GROQ_API_KEY:
-            self.llm = ChatGroq(
-                model=config.LLM_MODEL,
-                temperature=config.TEMPERATURE,
-                groq_api_key=config.GROQ_API_KEY
+        self.config = config
+        logger.info(f"Initializing Groq LLM with model: {self.config.LLM_MODEL}")
+        self.llm = self._initialize_llm()
+    
+    def _initialize_llm(self):
+        """Initialize the LLM based on configuration."""
+        try:
+            return ChatGroq(
+                model=self.config.LLM_MODEL,
+                temperature=self.config.TEMPERATURE,
+                groq_api_key=self.config.GROQ_API_KEY
             )
-        else:
-            self.llm = ChatOpenAI(
-                model=config.LLM_MODEL,
-                temperature=config.TEMPERATURE,
-                openai_api_key=config.OPENAI_API_KEY
-            )
+        except Exception as e:
+            logger.error(f"Failed to initialize LLM: {str(e)}")
+            raise
     
     def get_llm(self):
         return self.llm 

@@ -1,13 +1,35 @@
-fastapi
+# Core dependencies
+langchain
+langchain-huggingface
+langchain-astradb
+langchain-groq
+langchain-openai
+langchain-community
+langsmith
+
+# PDF Processing
+unstructured[all-docs]
+pdf2image
+pdfminer.six
+pytesseract
+tabulate
+pillow
+python-magic-bin  # for Windows
+# python-magic>=0.4.27  # Uncomment for Linux/MacOS
+
+# API and Web
+fastapi[standard]
 python-multipart
 uvicorn
 jinja2
-langchain
-langchain-openai
-langchain-community
-chromadb
-unstructured
+
+# Utils
 pydantic-settings
 python-dotenv
-langchain-groq
-langsmith
+
+transformers
+torch
+numpy
+
+chromadb
+groq

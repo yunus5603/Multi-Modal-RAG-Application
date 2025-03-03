@@ -1,83 +1,39 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multi-Modal RAG System</title>
-    <link rel="stylesheet" href="{{ url_for('static', path='styles.css') }}">
+    <title>PDF RAG Application</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
 </head>
 <body>
     <div class="container">
-        <h1>PDF Question Answering System</h1>
+        <h1>PDF RAG Application</h1>
         
-        <!-- PDF Upload Section -->
-        <div class="upload-section">
-            <h2>1. Upload PDF</h2>
-            <form id="uploadForm" class="upload-form">
-                <input type="file" id="pdfFile" accept=".pdf" required>
-                <button type="submit">Upload PDF</button>
+        <!-- Upload Section -->
+        <div class="section upload-section">
+            <h2>Upload PDF</h2>
+            <form id="uploadForm" enctype="multipart/form-data">
+                <div class="input-group">
+                    <input type="file" id="pdfFile" name="file" accept=".pdf" required>
+                    <button type="submit">Upload</button>
+                </div>
             </form>
-            <div id="uploadStatus"></div>
+            <div id="uploadStatus" class="status"></div>
         </div>
 
         <!-- Query Section -->
-        <div class="query-section">
-            <h2>2. Ask a Question</h2>
-            <form id="queryForm" class="query-form">
-                <textarea id="prompt" placeholder="Enter your question here..." required></textarea>
-                <button type="submit">Ask Question</button>
+        <div class="section query-section">
+            <h2>Ask Questions</h2>
+            <form id="queryForm">
+                <div class="input-group">
+                    <textarea id="queryInput" name="prompt" placeholder="Ask your question here..." required></textarea>
+                    <button type="submit">Ask</button>
+                </div>
             </form>
-        </div>
-
-        <!-- Response Section -->
-        <div class="response-section">
-            <h2>Response</h2>
-            <div id="response" class="response-box"></div>
+            <div id="queryResult" class="result-box"></div>
         </div>
     </div>
 
-    <script>
-        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const file = document.getElementById('pdfFile').files[0];
-            const formData = new FormData();
-            formData.append('file', file);
-
-            const uploadStatus = document.getElementById('uploadStatus');
-            uploadStatus.textContent = 'Uploading and processing PDF...';
-
-            try {
-                const response = await fetch('/upload', {
-                    method: 'POST',
-                    body: formData
-                });
-                const result = await response.json();
-                uploadStatus.textContent = result.message;
-            } catch (error) {
-                uploadStatus.textContent = 'Error processing PDF: ' + error.message;
-            }
-        });
-
-        document.getElementById('queryForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const prompt = document.getElementById('prompt').value;
-            const formData = new FormData();
-            formData.append('prompt', prompt);
-
-            const responseDiv = document.getElementById('response');
-            responseDiv.textContent = 'Processing query...';
-
-            try {
-                const response = await fetch('/query', {
-                    method: 'POST',
-                    body: formData
-                });
-                const result = await response.json();
-                responseDiv.textContent = result.response || result.error;
-            } catch (error) {
-                responseDiv.textContent = 'Error: ' + error.message;
-            }
-        });
-    </script>
+    <!-- Add JavaScript -->
+    <script src="{{ url_for('static', path='/script.js') }}"></script>
 </body>
 </html> 
