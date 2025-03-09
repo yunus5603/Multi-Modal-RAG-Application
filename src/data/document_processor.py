@@ -36,7 +36,7 @@ class DocumentProcessor:
         # Add Poppler path if on Windows
         if os.name == 'nt':  # Windows
             poppler_path = os.getenv('POPPLER_PATH')
-            if poppler_path and os.path.exists(poppler_path):
+            if (poppler_path and os.path.exists(poppler_path)):
                 logger.info(f"Using Poppler from: {poppler_path}")
                 os.environ['PATH'] = f"{poppler_path};{os.environ['PATH']}"
             else:
@@ -57,9 +57,15 @@ class DocumentProcessor:
                     filename=file_path,
                     **self.pdf_settings
                 )
+                # Debug: Log the types of elements found
+                element_types = {}
+                for elem in elements:
+                    elem_type = type(elem).__name__
+                    element_types[elem_type] = element_types.get(elem_type, 0) + 1
+                logger.info(f"Elements found in PDF: {element_types}")
+                
             except Exception as e:
                 logger.warning(f"Full PDF processing failed, falling back to basic mode: {e}")
-                # Fallback to basic settings
                 elements = partition_pdf(
                     filename=file_path,
                     strategy="fast",
@@ -69,7 +75,6 @@ class DocumentProcessor:
             documents = []
             for element in elements:
                 try:
-                    # Process based on element type
                     if isinstance(element, Table):
                         content = str(element)
                         metadata = {
@@ -78,17 +83,38 @@ class DocumentProcessor:
                             "page_number": getattr(element, "metadata", ElementMetadata()).page_number
                         }
                     elif isinstance(element, Image):
+                        logger.info(f"Found image element. Available attributes: {dir(element)}")  # Debug image attributes
                         try:
-                            image_data = base64.b64encode(element.image_data).decode()
-                            content = "[Image extracted from PDF]"
-                            metadata = {
-                                "source": file_path,
-                                "content_type": "image",
-                                "image_data": image_data,
-                                "page_number": getattr(element, "metadata", ElementMetadata()).page_number
-                            }
+                            image_data = None
+                            if hasattr(element, 'image'):
+                                logger.info("Trying to extract image via 'image' attribute")
+                                image_data = element.image
+                            elif hasattr(element, 'raw'):
+                                logger.info("Trying to extract image via 'raw' attribute")
+                                image_data = element.raw
+                            elif hasattr(element, 'image_path'):
+                                logger.info(f"Trying to extract image from path: {element.image_path}")
+                                with open(element.image_path, 'rb') as img_file:
+                                    image_data = img_file.read()
+                            elif hasattr(element, 'data'):
+                                logger.info("Trying to extract image via 'data' attribute")
+                                image_data = element.data
+                            
+                            if image_data:
+                                image_base64 = base64.b64encode(image_data).decode()
+                                content = "[Image extracted from PDF]"
+                                metadata = {
+                                    "source": file_path,
+                                    "content_type": "image",
+                                    "image_data": image_base64,
+                                    "page_number": getattr(element, "metadata", ElementMetadata()).page_number
+                                }
+                                logger.info("Successfully processed image")
+                            else:
+                                logger.warning("No image data found in any attribute")
+                                continue
                         except Exception as img_err:
-                            logger.warning(f"Failed to process image: {img_err}")
+                            logger.warning(f"Failed to process image: {img_err}", exc_info=True)
                             continue
                     else:
                         content = str(element)
@@ -107,7 +133,7 @@ class DocumentProcessor:
                     documents.append(doc)
                 
                 except Exception as elem_err:
-                    logger.warning(f"Failed to process element: {elem_err}")
+                    logger.warning(f"Failed to process element: {elem_err}", exc_info=True)
                     continue
             
             # Split text documents, keep others as is
@@ -136,4 +162,4 @@ class DocumentProcessor:
             return str(element)
         except Exception as e:
             logger.warning(f"Failed to extract text from element: {e}")
-            return "" 
+            return ""

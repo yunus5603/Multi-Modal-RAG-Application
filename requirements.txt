@@ -1,7 +1,6 @@
 # Core dependencies
 langchain
 langchain-huggingface
-langchain-astradb
 langchain-groq
 langchain-openai
 langchain-community
@@ -33,3 +32,5 @@ numpy
 
 chromadb
 groq
+
+qdrant-client

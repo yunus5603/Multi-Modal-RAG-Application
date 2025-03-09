@@ -30,15 +30,6 @@ class DataIngestionManager:
             
             # Process PDF
             documents = self.document_processor.process_pdf(file_path)
-<<<<<<< HEAD
-            
-            # Check if documents is None
-            if documents is None:
-                logger.warning("Document processor returned None. No documents to ingest.")
-                return self.vector_store, None
-            
-=======
->>>>>>> a3f48f137da3ee5a880eeef5c6f61be0d0864499
             logger.info(f"Processed PDF into {len(documents)} documents")
             
             # Log document types

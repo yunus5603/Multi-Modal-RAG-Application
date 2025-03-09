@@ -20,15 +20,11 @@ app = FastAPI(title="PDF RAG Application")
 # Get the absolute path to the directories
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
-<<<<<<< HEAD
-STATIC_DIR = BASE_DIR / "static"
-=======
 STATIC_DIR = BASE_DIR / "static"  # Updated path
 
 # Verify directories exist
 logger.info(f"Templates directory: {TEMPLATES_DIR}")
 logger.info(f"Static directory: {STATIC_DIR}")
->>>>>>> a3f48f137da3ee5a880eeef5c6f61be0d0864499
 
 # Setup templates and static files
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -42,13 +38,6 @@ llm_manager = LLMManager(config)
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     logger.info("Accessing index page")
-<<<<<<< HEAD
-    return templates.TemplateResponse("index.html", {"request": request})
-
-@app.post("/upload")
-async def upload_file(file: UploadFile):
-    logger.info(f"Received file upload: {file.filename}")
-=======
     return templates.TemplateResponse(
         "index.html", 
         {"request": request}
@@ -60,7 +49,6 @@ async def health_check():
 
 @app.post("/upload")
 async def upload_file(file: UploadFile):
->>>>>>> a3f48f137da3ee5a880eeef5c6f61be0d0864499
     temp_path = f"temp_{file.filename}"
     try:
         contents = await file.read()
@@ -69,18 +57,6 @@ async def upload_file(file: UploadFile):
         
         vector_store, insert_ids = manager.ingest_pdf(temp_path)
         
-<<<<<<< HEAD
-        if insert_ids:
-            logger.info(f"Successfully processed PDF. Documents added: {len(insert_ids)}")
-            return {"message": f"PDF processed successfully. {len(insert_ids)} documents added.", "status": "success"}
-        else:
-            logger.warning("No documents were extracted from the PDF")
-            return {"message": "PDF processed but no content was extracted.", "status": "warning"}
-            
-    except Exception as e:
-        logger.error(f"Error processing upload: {str(e)}")
-        return JSONResponse(status_code=500, content={"error": str(e)})
-=======
         return {
             "message": f"PDF processed successfully. {len(insert_ids) if insert_ids else 0} documents added.",
             "status": "success"
@@ -90,7 +66,6 @@ async def upload_file(file: UploadFile):
             status_code=500,
             content={"error": str(e)}
         )
->>>>>>> a3f48f137da3ee5a880eeef5c6f61be0d0864499
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
@@ -100,22 +75,6 @@ async def upload_file(file: UploadFile):
 async def query(prompt: str = Form(...)):
     logger.info(f"Received query: {prompt}")
     try:
-<<<<<<< HEAD
-        rag_chain = RAGChain(
-            vector_store=manager.vector_store,
-            llm=llm_manager.get_llm()  # This now returns the ChatGroq instance
-        )
-        response = await rag_chain.run(prompt)
-        logger.info("Query processed successfully")
-        return {"response": response, "status": "success"}
-    except Exception as e:
-        logger.error(f"Error processing query: {str(e)}", exc_info=True)
-        return JSONResponse(status_code=500, content={"error": str(e)})
-
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy"} 
-=======
         rag_chain = RAGChain(manager.vector_store, llm_manager.get_llm())
         response = await rag_chain.run(prompt)
         
@@ -128,4 +87,3 @@ async def health_check():
             status_code=500,
             content={"error": str(e)}
         ) 
->>>>>>> a3f48f137da3ee5a880eeef5c6f61be0d0864499
