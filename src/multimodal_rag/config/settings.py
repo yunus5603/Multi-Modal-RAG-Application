@@ -20,15 +20,15 @@ class Settings:
 
     # Model Settings
     DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"  # Using Mixtral for all operations
-    MAX_TOKENS = 1000
+    MAX_TOKENS = 800
     
     # PDF Processing Settings
-    MAX_CHARACTERS = 10000
-    COMBINE_CHARS = 2000
-    NEW_CHARS = 6000
+    MAX_CHARACTERS = 8000  # Reduced from 10000
+    COMBINE_CHARS = 1500  # Reduced from 2000
+    NEW_CHARS = 4000     # Reduced from 6000
 
     # Rate Limiting Settings
-    BATCH_SIZE = 2
-    BATCH_DELAY = 1.0  # seconds
-    MAX_RETRIES = 5
-    INITIAL_RETRY_DELAY = 1.0 
+    BATCH_SIZE = 1       # Reduced from 2 to avoid rate limits
+    BATCH_DELAY = 2.0    # Increased from 1.0 to add more delay
+    MAX_RETRIES = 3      # Reduced from 5 to fail faster
+    INITIAL_RETRY_DELAY = 2.0  # Increased from 1.0 

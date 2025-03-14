@@ -1,98 +1,130 @@
+from langchain_groq import ChatGroq
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
-from langchain_core.messages import HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
-from base64 import b64decode
 from typing import Dict, Any, List
-import uuid
-from langchain_community.vectorstores import Chroma
-from langchain.storage import InMemoryStore
-from langchain.schema.document import Document
-from langchain_community.embeddings import OpenAIEmbeddings
-from langchain.retrievers.multi_vector import MultiVectorRetriever
+from multimodal_rag.config.settings import Settings
+import logging
+
+logger = logging.getLogger(__name__)
 
 class RAGChain:
-    """Implements the RAG (Retrieval Augmented Generation) chain."""
+    """Handles RAG (Retrieval Augmented Generation) operations."""
 
-    def __init__(self, retriever: Any, model_name: str = "gpt-4o-mini"):
+    def __init__(self, retriever):
+        self.settings = Settings()
         self.retriever = retriever
-        self.model_name = model_name
-        self.chain = self._build_chain()
-        self.chain_with_sources = self._build_chain_with_sources()
+        self.chain = self._create_chain()
 
-    def _parse_docs(self, docs: List[Any]) -> Dict[str, List]:
-        """Parse documents into images and texts."""
-        b64 = []
-        text = []
-        for doc in docs:
+    def _create_groq_chat(self) -> ChatGroq:
+        """Creates a ChatGroq instance with proper configuration."""
+       
+        return ChatGroq(
+            model_name=self.settings.DEFAULT_GROQ_MODEL,
+            temperature=0.3,
+            max_tokens=self.settings.MAX_TOKENS
+            # Removed top_p, stop, and streaming parameters
+        )
+
+    def _create_chain(self):
+        """Creates the RAG chain with proper prompting."""
+        # Format retrieved documents
+        def format_docs(docs):
+            formatted_texts = []
+            for i, doc in enumerate(docs):
+                # Format content based on type
+                content_type = doc.metadata.get("type", "text")
+                formatted_texts.append(f"[{content_type.upper()} {i+1}]: {doc.page_content[:500]}")
+            
+            return "\n\n".join(formatted_texts)
+
+        # Retrieve relevant context
+        def get_context(query):
             try:
-                b64decode(doc)
-                b64.append(doc)
-            except Exception:
-                text.append(doc)
-        return {"images": b64, "texts": text}
+                docs = self.retriever.get_relevant_documents(query)
+                logger.info(f"Retrieved {len(docs)} relevant documents")
+                return {"docs": docs, "query": query}
+            except Exception as e:
+                logger.error(f"Error retrieving documents: {str(e)}")
+                # Return empty docs rather than failing
+                return {"docs": [], "query": query}
 
-    def _build_prompt(self, kwargs: Dict[str, Any]) -> ChatPromptTemplate:
-        """Build the prompt for the RAG chain."""
-        docs_by_type = kwargs["context"]
-        user_question = kwargs["question"]
+        # Create prompt template
+        template = """You are a helpful assistant answering questions about a document.
+        Use only the following context to answer the question. If you don't know the answer
+        based on the context, say "I don't have enough information to answer this question."
 
-        context_text = ""
-        if len(docs_by_type["texts"]) > 0:
-            for text_element in docs_by_type["texts"]:
-                context_text += text_element.text
+        Context:
+        {context}
 
-        prompt_template = f"""
-        Answer the question based only on the following context, which can include text, tables, and the below image.
-        Context: {context_text}
-        Question: {user_question}
+        Question: {query}
+
+        Answer the question concisely and professionally based only on the provided context.
         """
 
-        prompt_content = [{"type": "text", "text": prompt_template}]
-
-        if len(docs_by_type["images"]) > 0:
-            for image in docs_by_type["images"]:
-                prompt_content.append(
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{image}"},
-                    }
-                )
-
-        return ChatPromptTemplate.from_messages(
-            [HumanMessage(content=prompt_content)]
-        )
-
-    def _build_chain(self):
-        """Build the basic RAG chain."""
-        return (
-            {
-                "context": self.retriever | RunnableLambda(self._parse_docs),
-                "question": RunnablePassthrough(),
+        prompt = ChatPromptTemplate.from_template(template)
+        
+        # Create the chain with error handling
+        def safe_invoke(model, inputs):
+            try:
+                return model.invoke(inputs)
+            except Exception as e:
+                logger.error(f"Error invoking model: {str(e)}")
+                return "I encountered an error processing your request. Please try again with a simpler question."
+        
+        chain = (
+            RunnableLambda(get_context)
+            | {
+                "context": lambda x: format_docs(x["docs"]),
+                "query": lambda x: x["query"],
+                "raw_context": lambda x: x["docs"]
             }
-            | RunnableLambda(self._build_prompt)
-            | ChatOpenAI(model=self.model_name)
-            | StrOutputParser()
+            | {
+                "response": RunnableLambda(lambda x: safe_invoke(
+                    prompt | self._create_groq_chat() | StrOutputParser(),
+                    {"context": x["context"], "query": x["query"]}
+                )),
+                "context": lambda x: x["raw_context"]
+            }
         )
 
-    def _build_chain_with_sources(self):
-        """Build the RAG chain that includes sources."""
-        return {
-            "context": self.retriever | RunnableLambda(self._parse_docs),
-            "question": RunnablePassthrough(),
-        } | RunnablePassthrough().assign(
-            response=(
-                RunnableLambda(self._build_prompt)
-                | ChatOpenAI(model=self.model_name)
-                | StrOutputParser()
-            )
-        )
+        return chain
 
-    def query(self, question: str) -> str:
-        """Query the RAG chain."""
-        return self.chain.invoke(question)
-
-    def query_with_sources(self, question: str) -> Dict[str, Any]:
-        """Query the RAG chain and return sources."""
-        return self.chain_with_sources.invoke(question)
+    def query_with_sources(self, query: str) -> Dict[str, Any]:
+        """
+        Query the RAG system and return response with sources.
+        
+        Args:
+            query: The question to ask
+            
+        Returns:
+            Dict containing response and context
+        """
+        try:
+            logger.info(f"Processing query: {query}")
+            result = self.chain.invoke(query)
+            
+            # Organize context by type
+            context = {
+                "texts": [],
+                "tables": [],
+                "images": []
+            }
+            
+            if "context" in result:
+                for doc in result["context"]:
+                    doc_type = doc.metadata.get("type", "texts")
+                    if doc_type in context:
+                        context[doc_type].append(doc)
+            
+            return {
+                "response": result["response"],
+                "context": context
+            }
+            
+        except Exception as e:
+            logger.error(f"Error processing query: {str(e)}")
+            return {
+                "response": "Sorry, I encountered an error while processing your query.",
+                "context": {"texts": [], "tables": [], "images": []}
+            }
