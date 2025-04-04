@@ -1,7 +1,7 @@
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from typing import List, Any
+from typing import List, Any, Dict
 import asyncio
 from multimodal_rag.utils.rate_limiter import RateLimiter
 from multimodal_rag.utils.image_processor import ImageProcessor
@@ -55,7 +55,7 @@ class ContentSummarizer:
         prompt_text = """
         Describe this image concisely:
         
-        Image (base64): {image}
+        Image (base64): {content}
         
         Description:
         """
@@ -101,17 +101,23 @@ class ContentSummarizer:
         tables_html = [table.metadata.text_as_html for table in tables]
         return await self._process_with_rate_limit(tables_html, self.text_chain)
 
-    async def summarize_images(self, images: List[str]) -> List[str]:
+    async def summarize_images(self, images: List[Dict]) -> List[str]:
         """Summarize image elements with rate limiting."""
         logger.info(f"Summarizing {len(images)} image elements")
         
+        # Extract base64 content from image dictionaries
+        base64_images = [img['content'] for img in images]
+        
         # Process images to reduce size before summarizing
-        processed_images = self.image_processor.process_images_batch(images)
+        processed_images = self.image_processor.process_images_batch(base64_images)
         logger.info(f"Processed {len(processed_images)} images to reduce size")
+        
+        # Create input dictionaries for the chain
+        chain_inputs = [{'content': img} for img in processed_images]
         
         # Use smaller batch size for image processing
         return await self._process_with_rate_limit(
-            processed_images, 
+            chain_inputs, 
             self.image_chain,
             batch_size=1  # Process only one image at a time
         ) 

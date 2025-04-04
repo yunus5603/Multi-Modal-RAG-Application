@@ -19,8 +19,8 @@ class Settings:
     LANGCHAIN_TRACING_V2 = os.getenv("LANGCHAIN_TRACING_V2", "true")
 
     # Model Settings
-    DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"  # Using Mixtral for all operations
-    MAX_TOKENS = 800
+    DEFAULT_GROQ_MODEL = "llama3-70b-8192"  # Using llama for all operations
+    MAX_TOKENS = 1024
     
     # PDF Processing Settings
     MAX_CHARACTERS = 8000  # Reduced from 10000

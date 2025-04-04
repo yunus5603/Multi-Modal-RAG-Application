@@ -5,6 +5,9 @@ from langchain_core.output_parsers import StrOutputParser
 from typing import Dict, Any, List
 from multimodal_rag.config.settings import Settings
 import logging
+import base64
+from PIL import Image
+import io
 
 logger = logging.getLogger(__name__)
 
@@ -18,12 +21,10 @@ class RAGChain:
 
     def _create_groq_chat(self) -> ChatGroq:
         """Creates a ChatGroq instance with proper configuration."""
-       
         return ChatGroq(
             model_name=self.settings.DEFAULT_GROQ_MODEL,
             temperature=0.3,
             max_tokens=self.settings.MAX_TOKENS
-            # Removed top_p, stop, and streaming parameters
         )
 
     def _create_chain(self):
@@ -32,9 +33,22 @@ class RAGChain:
         def format_docs(docs):
             formatted_texts = []
             for i, doc in enumerate(docs):
-                # Format content based on type
-                content_type = doc.metadata.get("type", "text")
-                formatted_texts.append(f"[{content_type.upper()} {i+1}]: {doc.page_content[:500]}")
+                # Format content based on type and metadata
+                content_type = getattr(doc.metadata, "type", "text")
+                page_number = getattr(doc.metadata, "page_number", "unknown")
+                
+                if content_type == "text":
+                    formatted_texts.append(
+                        f"[TEXT from page {page_number}]: {getattr(doc.metadata, 'original_content', doc.page_content)}"
+                    )
+                elif content_type == "table":
+                    formatted_texts.append(
+                        f"[TABLE from page {page_number}]: {getattr(doc.metadata, 'html_content', doc.page_content)}"
+                    )
+                elif content_type == "image":
+                    formatted_texts.append(
+                        f"[IMAGE from page {page_number}]: {doc.page_content}"
+                    )
             
             return "\n\n".join(formatted_texts)
 
@@ -46,7 +60,6 @@ class RAGChain:
                 return {"docs": docs, "query": query}
             except Exception as e:
                 logger.error(f"Error retrieving documents: {str(e)}")
-                # Return empty docs rather than failing
                 return {"docs": [], "query": query}
 
         # Create prompt template
@@ -60,6 +73,7 @@ class RAGChain:
         Question: {query}
 
         Answer the question concisely and professionally based only on the provided context.
+        Include page numbers when referencing specific content.
         """
 
         prompt = ChatPromptTemplate.from_template(template)
@@ -104,7 +118,7 @@ class RAGChain:
             logger.info(f"Processing query: {query}")
             result = self.chain.invoke(query)
             
-            # Organize context by type
+            # Organize context by type with enhanced metadata
             context = {
                 "texts": [],
                 "tables": [],
@@ -113,9 +127,22 @@ class RAGChain:
             
             if "context" in result:
                 for doc in result["context"]:
-                    doc_type = doc.metadata.get("type", "texts")
-                    if doc_type in context:
-                        context[doc_type].append(doc)
+                    doc_type = getattr(doc.metadata, "type", "text")
+                    if doc_type == "text":
+                        context["texts"].append({
+                            "content": getattr(doc.metadata, "original_content", doc.page_content),
+                            "page_number": getattr(doc.metadata, "page_number", "unknown")
+                        })
+                    elif doc_type == "table":
+                        context["tables"].append({
+                            "content": getattr(doc.metadata, "html_content", doc.page_content),
+                            "page_number": getattr(doc.metadata, "page_number", "unknown")
+                        })
+                    elif doc_type == "image":
+                        context["images"].append({
+                            "content": doc.page_content,
+                            "page_number": getattr(doc.metadata, "page_number", "unknown")
+                        })
             
             return {
                 "response": result["response"],

@@ -85,38 +85,70 @@ async def process_pdf_async(uploaded_file):
             extractor = PDFExtractor()
             chunks = extractor.extract_elements(tmp_path)
             elements = extractor.separate_elements(chunks)
+            
+            if not any([elements['texts'], elements['tables'], elements['images']]):
+                raise ValueError("No content extracted from PDF")
         
         # Initialize summarizer
         summarizer = ContentSummarizer()
         
-        # Process text elements
-        with st.spinner("📝 Summarizing text content..."):
-            text_summaries = await summarizer.summarize_texts(elements['texts'])
+        # Process each content type separately with clear error handling
+        text_summaries = []
+        table_summaries = []
+        image_summaries = []
         
-        # Process table elements
-        with st.spinner("📊 Summarizing tables..."):
-            table_summaries = await summarizer.summarize_tables(elements['tables'])
+        # Process texts if available
+        if elements['texts']:
+            with st.spinner("📝 Summarizing text content..."):
+                try:
+                    text_summaries = await summarizer.summarize_texts(elements['texts'])
+                    logger.info(f"Successfully summarized {len(text_summaries)} text elements")
+                except Exception as e:
+                    logger.error(f"Error summarizing texts: {str(e)}")
+                    text_summaries = []
         
-        # Process image elements
-        with st.spinner("🖼️ Analyzing images..."):
-            image_summaries = await summarizer.summarize_images(elements['images'])
+        # Process tables if available
+        if elements['tables']:
+            with st.spinner("📊 Summarizing tables..."):
+                try:
+                    table_summaries = await summarizer.summarize_tables(elements['tables'])
+                    logger.info(f"Successfully summarized {len(table_summaries)} table elements")
+                except Exception as e:
+                    logger.error(f"Error summarizing tables: {str(e)}")
+                    table_summaries = []
         
-        # Initialize vector store
-        with st.spinner("🔄 Building knowledge base..."):
-            vector_store = VectorStoreManager()
-            vector_store.add_texts(elements['texts'], text_summaries)
-            vector_store.add_tables(elements['tables'], table_summaries)
-            vector_store.add_images(elements['images'], image_summaries)
+        # Process images if available
+        if elements['images']:
+            with st.spinner("🖼️ Analyzing images..."):
+                try:
+                    image_summaries = await summarizer.summarize_images(elements['images'])
+                    logger.info(f"Successfully summarized {len(image_summaries)} image elements")
+                except Exception as e:
+                    logger.error(f"Error summarizing images: {str(e)}")
+                    image_summaries = []
         
-        # Initialize RAG chain
-        with st.spinner("🧠 Initializing RAG system..."):
-            rag_chain = RAGChain(vector_store.get_retriever())
-        
-        # Update session state
-        st.session_state.vector_store = vector_store
-        st.session_state.rag_chain = rag_chain
-        st.session_state.pdf_processed = True
-        st.session_state.elements = elements
+        # Initialize vector store only if we have any summaries
+        if any([text_summaries, table_summaries, image_summaries]):
+            with st.spinner("🔄 Building knowledge base..."):
+                vector_store = VectorStoreManager()
+                
+                if text_summaries:
+                    vector_store.add_texts(elements['texts'], text_summaries)
+                if table_summaries:
+                    vector_store.add_tables(elements['tables'], table_summaries)
+                if image_summaries:
+                    vector_store.add_images(elements['images'], image_summaries)
+                
+                # Initialize RAG chain
+                rag_chain = RAGChain(vector_store.get_retriever())
+                
+                # Update session state
+                st.session_state.vector_store = vector_store
+                st.session_state.rag_chain = rag_chain
+                st.session_state.pdf_processed = True
+                st.session_state.elements = elements
+        else:
+            raise ValueError("No content could be processed successfully")
         
     except Exception as e:
         logger.error(f"Error processing PDF: {str(e)}", exc_info=True)
@@ -191,24 +223,32 @@ def main():
         with tab1:
             if st.session_state.elements['texts']:
                 for i, text in enumerate(st.session_state.elements['texts']):
-                    with st.expander(f"Text Chunk {i+1}"):
-                        st.write(text.text[:500] + ("..." if len(text.text) > 500 else ""))
+                    st.markdown(f"### Text Chunk {i+1}")
+                    # Access the content from the dictionary structure
+                    content = text['content'].text if hasattr(text['content'], 'text') else str(text['content'])
+                    st.write(content[:500] + ("..." if len(content) > 500 else ""))
+                    st.divider()
             else:
                 st.info("No text content extracted from the document.")
         
         with tab2:
             if st.session_state.elements['tables']:
                 for i, table in enumerate(st.session_state.elements['tables']):
-                    with st.expander(f"Table {i+1}"):
-                        st.markdown(table.metadata.text_as_html, unsafe_allow_html=True)
+                    st.markdown(f"### Table {i+1}")
+                    # Access the HTML content from the metadata
+                    html_content = table['metadata']['text_as_html']
+                    st.markdown(html_content, unsafe_allow_html=True)
+                    st.divider()
             else:
                 st.info("No tables extracted from the document.")
         
         with tab3:
             if st.session_state.elements['images']:
                 for i, image in enumerate(st.session_state.elements['images']):
-                    with st.expander(f"Image {i+1}"):
-                        display_image(image)
+                    st.markdown(f"### Image {i+1}")
+                    # Access the base64 content from the dictionary
+                    display_image(image['content'])
+                    st.divider()
             else:
                 st.info("No images extracted from the document.")
     
@@ -228,20 +268,20 @@ def main():
                     if response['context']['texts']:
                         st.subheader("Text Sources:")
                         for i, doc in enumerate(response['context']['texts']):
-                            st.markdown(f"**Source {i+1}:**")
-                            st.write(doc.page_content[:300] + "...")
+                            st.markdown(f"**Source {i+1} (Page {doc['page_number']}):**")
+                            st.write(doc['content'][:300] + "...")
                     
                     if response['context']['tables']:
                         st.subheader("Table Sources:")
                         for i, table in enumerate(response['context']['tables']):
-                            st.markdown(f"**Table {i+1}:**")
-                            st.markdown(table.metadata.text_as_html, unsafe_allow_html=True)
+                            st.markdown(f"**Table {i+1} (Page {table['page_number']}):**")
+                            st.markdown(table['content'], unsafe_allow_html=True)
                     
                     if response['context']['images']:
                         st.subheader("Image Sources:")
                         for i, img in enumerate(response['context']['images']):
-                            st.markdown(f"**Image {i+1}:**")
-                            display_image(img)
+                            st.markdown(f"**Image {i+1} (Page {img['page_number']}):**")
+                            display_image(img['content'])
             except Exception as e:
                 st.error(f"❌ Error generating response: {str(e)}")
                 logger.error(f"Query error: {str(e)}", exc_info=True)

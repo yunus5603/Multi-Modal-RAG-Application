@@ -1,3 +1,4 @@
 venv/
 .env
-pycache/
+__pycache__/
+multimodal_rag.egg-info
